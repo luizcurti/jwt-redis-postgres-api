@@ -1,31 +1,28 @@
 import { NextFunction, Request, Response } from 'express';
-import { verify } from 'jsonwebtoken';
+import { UnauthorizedError } from '../errors/AppError';
+import { TokenService } from '../services/TokenService';
+
+const tokenService = new TokenService();
 
 export function authentication(
   request: Request,
   response: Response,
   next: NextFunction
-): Response | void {
+): void {
   const authHeader = request.headers.authorization;
 
   if (!authHeader) {
-    return response.status(401).json({ error: 'Token missing' });
+    throw new UnauthorizedError('Token missing');
   }
 
   const [, token] = authHeader.split(' ');
 
   if (!token) {
-    return response.status(401).json({ error: 'Invalid token' });
+    throw new UnauthorizedError('Invalid token');
   }
 
-  try {
-    const decoded = verify(token, process.env.JWT_SECRET as string) as {
-      sub: string;
-    };
-    request.userId = decoded.sub;
+  const { subject } = tokenService.verify(token);
+  request.userId = subject;
 
-    return next();
-  } catch {
-    return response.status(401).json({ error: 'Invalid token' });
-  }
+  next();
 }

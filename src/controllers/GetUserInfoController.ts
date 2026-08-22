@@ -1,29 +1,27 @@
-import { Request, Response } from 'express';
-import { getRedis } from '../redisConfig';
+import { NextFunction, Request, Response } from 'express';
+import { ValidationError } from '../errors/AppError';
+import { UserService } from '../services/UserService';
 
 export class GetUserInfoController {
-  async handle(request: Request, response: Response): Promise<Response> {
-    const { id } = request.params;
+  constructor(private readonly userService: UserService) {}
 
-    if (!id) {
-      return response
-        .status(400)
-        .json({ error: 'User ID is required in the request.' });
-    }
-
+  handle = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      const userRedis = await getRedis(`user-${id}`);
+      const { id } = request.params;
 
-      if (!userRedis) {
-        return response.status(404).json({ error: 'User not found in cache.' });
+      if (typeof id !== 'string') {
+        throw new ValidationError('User ID is required in the request.');
       }
 
-      const user = JSON.parse(userRedis);
+      const profile = await this.userService.getUserProfile(request.userId, id);
 
-      return response.status(200).json(user);
+      response.status(200).json(profile);
     } catch (error) {
-      console.error('Error fetching user from Redis:', error);
-      return response.status(500).json({ error: 'Internal server error.' });
+      next(error);
     }
-  }
+  };
 }

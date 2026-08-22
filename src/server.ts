@@ -1,5 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
+import swaggerUi from 'swagger-ui-express';
+import { openapiSpec } from './docs/openapi';
+import { errorHandler } from './middleware/errorHandler';
 import router from './routes';
 
 const app = express();
@@ -9,7 +12,10 @@ app.get('/', (req, res) => {
   res.status(200).json({ message: 'Server is running!' });
 });
 
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
+
 app.use(router);
+app.use(errorHandler);
 
 const PORT = process.env.NODE_ENV === 'test' ? 0 : process.env.PORT || 3000;
 

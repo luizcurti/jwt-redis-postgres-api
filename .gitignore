@@ -37,6 +37,3 @@ Thumbs.db
 
 # TypeScript cache
 *.tsbuildinfo
-
-# Docker
-.dockerignore

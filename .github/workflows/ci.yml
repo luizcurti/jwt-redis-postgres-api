@@ -16,7 +16,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:13
+        image: postgres:15
         env:
           POSTGRES_DB: test_db
           POSTGRES_USER: test_user
@@ -38,6 +38,17 @@ jobs:
           --health-retries 5
         ports:
           - 6379:6379
+
+    env:
+      NODE_ENV: test
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_pass
+      POSTGRES_DB: test_db
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      JWT_SECRET: ci-test-secret
 
     steps:
       - name: Checkout code
@@ -61,19 +72,11 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
-      - name: Run tests
-        run: npm run test
-        env:
-          NODE_ENV: test
-          DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/test_db
-          REDIS_URL: redis://localhost:6379
+      - name: Run unit tests
+        run: npm test
 
-      - name: Run test coverage
-        run: npm run coverage
-        env:
-          NODE_ENV: test
-          DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/test_db
-          REDIS_URL: redis://localhost:6379
+      - name: Run integration and e2e tests with coverage
+        run: npm run coverage:all
 
       - name: Build project
         run: npm run build
