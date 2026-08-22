@@ -2,11 +2,21 @@
 	"info": {
 		"_postman_id": "9548a068-b36f-4752-b2a0-721d806a8789",
 		"name": "Node Redis API",
-		"description": "Collection of endpoints for the Node.js app with Redis",
+		"description": "Collection of endpoints for the Node.js app with Redis. Covers the happy path and the sad path (validation, auth, and ownership errors) for every endpoint. Run with newman: `npm run test:collection`.\n\nNote: the 404 \"profile not cached\" case (session expired) is intentionally not covered here — it requires directly clearing the Redis cache, which is out of reach for a black-box HTTP collection. It is covered by the Jest e2e suite instead.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
 		"_exporter_id": "43702418"
 	},
 	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000",
+			"type": "string"
+		},
+		{
+			"key": "username",
+			"value": "",
+			"type": "string"
+		},
 		{
 			"key": "token",
 			"value": "",
@@ -21,123 +31,330 @@
 	"item": [
 		{
 			"name": "Health Check",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "http://localhost:3000/",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "3000",
-					"path": [
-						""
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Create User",
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{ \n    \"name\": \"newname\", \n    \"username\": \"newuser\", \n    \"email\": \"newuser@example.com\", \n    \"password\": \"newpassword\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "http://localhost:3000/users",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "3000",
-					"path": [
-						"users"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Login User",
 			"event": [
 				{
 					"listen": "test",
 					"script": {
+						"type": "text/javascript",
 						"exec": [
-							"const res = pm.response.json();",
-							"if (res.token) {",
-							"    pm.collectionVariables.set('token', res.token);",
-							"}",
-							"if (res.user && res.user.id) {",
-							"    pm.collectionVariables.set('userId', res.user.id);",
-							"}"
-						],
-						"type": "text/javascript"
+							"pm.test('status is 200', () => pm.response.to.have.status(200));",
+							"pm.test('reports the server is running', () => {",
+							"    pm.expect(pm.response.json()).to.eql({ message: 'Server is running!' });",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": { "raw": "{{baseUrl}}/", "host": ["{{baseUrl}}"], "path": [""] }
+			},
+			"response": []
+		},
+		{
+			"name": "Create User (happy path)",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.collectionVariables.set('username', 'newuser_' + Date.now());"
+						]
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('status is 201', () => pm.response.to.have.status(201));",
+							"pm.test('response has message and userId', () => {",
+							"    const body = pm.response.json();",
+							"    pm.expect(body.message).to.eql('User created successfully');",
+							"    pm.expect(body.userId).to.be.a('string').and.not.empty;",
+							"});"
+						]
 					}
 				}
 			],
 			"request": {
 				"method": "POST",
-				"header": [],
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"username\": \"newuser\", \n    \"password\": \"newpassword\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
+					"raw": "{\n    \"name\": \"New User\",\n    \"username\": \"{{username}}\",\n    \"email\": \"{{username}}@example.com\",\n    \"password\": \"newpassword\"\n}",
+					"options": { "raw": { "language": "json" } }
 				},
+				"url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] }
+			},
+			"response": []
+		},
+		{
+			"name": "Create User - missing fields (sad path)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('status is 400', () => pm.response.to.have.status(400));",
+							"pm.test('reports missing fields', () => {",
+							"    pm.expect(pm.response.json()).to.eql({ error: 'Missing required fields.' });",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"username\": \"incomplete\"\n}",
+					"options": { "raw": { "language": "json" } }
+				},
+				"url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] }
+			},
+			"response": []
+		},
+		{
+			"name": "Create User - duplicate username (sad path)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('status is 409', () => pm.response.to.have.status(409));",
+							"pm.test('reports username already taken', () => {",
+							"    pm.expect(pm.response.json()).to.eql({ error: 'Username already taken.' });",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"name\": \"Another User\",\n    \"username\": \"{{username}}\",\n    \"email\": \"another_{{username}}@example.com\",\n    \"password\": \"newpassword\"\n}",
+					"options": { "raw": { "language": "json" } }
+				},
+				"url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] }
+			},
+			"response": []
+		},
+		{
+			"name": "Login - missing fields (sad path)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('status is 400', () => pm.response.to.have.status(400));",
+							"pm.test('reports missing credentials', () => {",
+							"    pm.expect(pm.response.json()).to.eql({ error: 'Username and password are required.' });",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"username\": \"{{username}}\"\n}",
+					"options": { "raw": { "language": "json" } }
+				},
+				"url": { "raw": "{{baseUrl}}/login", "host": ["{{baseUrl}}"], "path": ["login"] }
+			},
+			"response": []
+		},
+		{
+			"name": "Login - invalid credentials (sad path)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('status is 401', () => pm.response.to.have.status(401));",
+							"pm.test('reports invalid credentials', () => {",
+							"    pm.expect(pm.response.json()).to.eql({ error: 'Invalid credentials.' });",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"username\": \"{{username}}\",\n    \"password\": \"wrongpassword\"\n}",
+					"options": { "raw": { "language": "json" } }
+				},
+				"url": { "raw": "{{baseUrl}}/login", "host": ["{{baseUrl}}"], "path": ["login"] }
+			},
+			"response": []
+		},
+		{
+			"name": "Login (happy path)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('status is 200', () => pm.response.to.have.status(200));",
+							"const body = pm.response.json();",
+							"pm.test('response has message, token and user', () => {",
+							"    pm.expect(body.message).to.eql('Login successful');",
+							"    pm.expect(body.token).to.be.a('string').and.not.empty;",
+							"    pm.expect(body.user).to.include.keys('id', 'name', 'username', 'email');",
+							"    pm.expect(body.user).to.not.have.property('password');",
+							"});",
+							"if (body.token) pm.collectionVariables.set('token', body.token);",
+							"if (body.user && body.user.id) pm.collectionVariables.set('userId', body.user.id);"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"username\": \"{{username}}\",\n    \"password\": \"newpassword\"\n}",
+					"options": { "raw": { "language": "json" } }
+				},
+				"url": { "raw": "{{baseUrl}}/login", "host": ["{{baseUrl}}"], "path": ["login"] }
+			},
+			"response": []
+		},
+		{
+			"name": "Get User Profile - missing token (sad path)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('status is 401', () => pm.response.to.have.status(401));",
+							"pm.test('reports missing token', () => {",
+							"    pm.expect(pm.response.json()).to.eql({ error: 'Token missing' });",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
 				"url": {
-					"raw": "http://localhost:3000/login",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "3000",
-					"path": [
-						"login"
-					]
+					"raw": "{{baseUrl}}/users/profile/{{userId}}",
+					"host": ["{{baseUrl}}"],
+					"path": ["users", "profile", "{{userId}}"]
 				}
 			},
 			"response": []
 		},
 		{
-			"name": "Get User Profile",
+			"name": "Get User Profile - invalid token (sad path)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('status is 401', () => pm.response.to.have.status(401));",
+							"pm.test('reports invalid token', () => {",
+							"    pm.expect(pm.response.json()).to.eql({ error: 'Invalid token' });",
+							"});"
+						]
+					}
+				}
+			],
 			"request": {
-				"auth": {
-					"type": "bearer",
-					"bearer": [
-						{
-							"key": "token",
-							"value": "{{token}}",
-							"type": "string"
-						}
-					]
-				},
 				"method": "GET",
 				"header": [],
+				"auth": {
+					"type": "bearer",
+					"bearer": [{ "key": "token", "value": "not-a-real-token", "type": "string" }]
+				},
 				"url": {
-					"raw": "http://localhost:3000/users/profile/{{userId}}",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "3000",
-					"path": [
-						"users",
-						"profile",
-						"{{userId}}"
-					]
+					"raw": "{{baseUrl}}/users/profile/{{userId}}",
+					"host": ["{{baseUrl}}"],
+					"path": ["users", "profile", "{{userId}}"]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get User Profile - forbidden, wrong owner (sad path)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('status is 403', () => pm.response.to.have.status(403));",
+							"pm.test('reports the ownership violation', () => {",
+							"    pm.expect(pm.response.json()).to.eql({ error: 'You are not allowed to access this profile.' });",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"auth": {
+					"type": "bearer",
+					"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+				},
+				"url": {
+					"raw": "{{baseUrl}}/users/profile/00000000-0000-0000-0000-000000000000",
+					"host": ["{{baseUrl}}"],
+					"path": ["users", "profile", "00000000-0000-0000-0000-000000000000"]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get User Profile (happy path)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('status is 200', () => pm.response.to.have.status(200));",
+							"pm.test('returns the caller own profile', () => {",
+							"    const body = pm.response.json();",
+							"    pm.expect(body.id).to.eql(pm.collectionVariables.get('userId'));",
+							"    pm.expect(body.username).to.eql(pm.collectionVariables.get('username'));",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"auth": {
+					"type": "bearer",
+					"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+				},
+				"url": {
+					"raw": "{{baseUrl}}/users/profile/{{userId}}",
+					"host": ["{{baseUrl}}"],
+					"path": ["users", "profile", "{{userId}}"]
 				}
 			},
 			"response": []

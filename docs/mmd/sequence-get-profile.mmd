@@ -1,0 +1,45 @@
+sequenceDiagram
+    actor Client
+    participant Auth as auth middleware
+    participant Token as TokenService
+    participant Controller as GetUserInfoController
+    participant Service as UserService
+    participant Cache as CacheRepository
+    participant Redis
+
+    Client->>Auth: GET /users/profile/:id (Authorization: Bearer <token>)
+
+    alt missing Authorization header
+        Auth-->>Client: 401 Token missing
+    else malformed/invalid token
+        Auth->>Token: verify(token)
+        Token-->>Auth: throws UnauthorizedError
+        Auth-->>Client: 401 Invalid token
+    else valid token
+        Auth->>Token: verify(token)
+        Token-->>Auth: { subject: userId }
+        Auth->>Auth: request.userId = subject
+        Auth->>Controller: next()
+
+        alt requesting a different user's profile (IDOR)
+            Controller->>Service: getUserProfile(requestingUserId, targetUserId)
+            Service-->>Controller: throws ForbiddenError
+            Controller-->>Client: 403 You are not allowed to access this profile.
+        else own profile, not cached / expired
+            Controller->>Service: getUserProfile(requestingUserId, targetUserId)
+            Service->>Cache: getUserProfile(targetUserId)
+            Cache->>Redis: GET user-{id}
+            Redis-->>Cache: nil
+            Cache-->>Service: null
+            Service-->>Controller: throws NotFoundError
+            Controller-->>Client: 404 User not found in cache.
+        else own profile, cached (happy path)
+            Controller->>Service: getUserProfile(requestingUserId, targetUserId)
+            Service->>Cache: getUserProfile(targetUserId)
+            Cache->>Redis: GET user-{id}
+            Redis-->>Cache: JSON profile
+            Cache-->>Service: profile
+            Service-->>Controller: profile
+            Controller-->>Client: 200 { id, name, username, email }
+        end
+    end

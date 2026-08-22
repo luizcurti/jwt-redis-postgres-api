@@ -1,6 +1,6 @@
 # Node.js + Redis + PostgreSQL REST API
 
-A REST API built with Node.js, Express, PostgreSQL, and Redis that handles user registration, authentication with JWT, and Redis-based profile caching. Built with a layered architecture (controllers → services → repositories), centralized error handling, and full unit/integration/e2e test coverage.
+A REST API built with Node.js, Express, PostgreSQL, and Redis that handles user registration, authentication with JWT, and Redis-based profile caching. Built with a layered architecture (controllers → services → repositories), constructor-based dependency injection from a single composition root, centralized error handling, and full unit/integration/e2e/collection test coverage.
 
 ---
 
@@ -8,34 +8,42 @@ A REST API built with Node.js, Express, PostgreSQL, and Redis that handles user 
 
 | Layer | Technology |
 |---|---|
-| Runtime | Node.js 20 + TypeScript 5 |
+| Runtime | Node.js 20 + TypeScript 5.9 (strict mode) |
 | Framework | Express 5 |
 | Database | PostgreSQL 15 (persistent storage) |
-| Cache | Redis 7 (session cache via ioredis 5) |
+| Cache | Redis 7 (session cache via ioredis 6) |
 | Auth | JWT (jsonwebtoken) |
-| Passwords | bcryptjs |
+| Passwords | bcryptjs 3 |
 | API docs | OpenAPI 3.0 via swagger-ui-express |
-| Testing | Jest + ts-jest + Supertest (unit, integration, e2e) |
+| Testing | Jest 30 + ts-jest + Supertest (unit, integration, e2e) + Newman (Postman collection) |
 | Containers | Docker (multi-stage) + Docker Compose |
+
+> **Dependency note:** TypeScript is pinned to the `5.x` line on purpose. TypeScript 7 (the new Go-based native compiler) and TypeScript 6 are both out — but `@typescript-eslint` doesn't support them yet, and TS 6.0.3 has a regression where `@types/jest` globals (`describe`, `it`, `expect`, ...) stop resolving via `typeRoots`. `5.9.3` is the newest version compatible with the rest of the toolchain. Revisit this pin once `@typescript-eslint` catches up.
 
 ---
 
 ## Architecture Overview
 
+![Architecture diagram](docs/img/architecture.svg)
+
 ```
 Client
   │
   ▼
-Express Router (composition root)
+Express Router (composition root: routes.ts)
   │
   ├── POST /users              → CreateUserController → UserService   → UserRepository (PostgreSQL)
   ├── POST /login               → LoginUserController  → AuthService    → UserRepository + CacheRepository + TokenService
   └── GET  /users/profile/:id   → auth middleware → GetUserInfoController → UserService → CacheRepository (Redis)
 ```
 
-Controllers are thin: they parse the request, call a service, and forward any error to a single `errorHandler` middleware via `next(error)`. All business rules (validation, password hashing, ownership checks, caching) live in the service layer; repositories only wrap raw PostgreSQL/Redis calls.
+Controllers are thin: `asyncHandler` (`src/middleware/asyncHandler.ts`) wraps each `handle` method and forwards any rejected promise to the central `errorHandler` middleware via `next(error)`, so controllers never repeat try/catch boilerplate. All business rules (validation, password hashing, ownership checks, caching) live in the service layer; repositories only wrap raw PostgreSQL/Redis calls.
+
+Every collaborator — repositories, services, controllers, and the auth middleware (built by the `createAuthMiddleware` factory) — is constructed once in `src/routes.ts`, the single composition root, and injected via constructors. Nothing under `src/` reaches into a global singleton or instantiates its own dependencies.
 
 After a successful login, the user's data is stored in Redis with a 1-hour TTL (`user-{id}`). `GET /users/profile/:id` reads exclusively from the Redis cache — no database round-trip — and only succeeds if the authenticated caller (`request.userId`, from the JWT) matches the requested `:id`; otherwise it returns `403`.
+
+See [`docs/`](docs/) for the full set of architecture and sequence diagrams (Mermaid source + rendered SVGs).
 
 ---
 
@@ -44,6 +52,8 @@ After a successful login, the user's data is stored in Redis with a 1-hour TTL (
 Full interactive documentation (OpenAPI/Swagger UI) is served at **`/docs`** once the server is running.
 
 ### `POST /users` — Create a new user
+
+![Create user sequence diagram](docs/img/sequence-create-user.svg)
 
 **Request body:**
 ```json
@@ -68,6 +78,8 @@ Full interactive documentation (OpenAPI/Swagger UI) is served at **`/docs`** onc
 
 ### `POST /login` — Authenticate a user
 
+![Login sequence diagram](docs/img/sequence-login.svg)
+
 **Request body:**
 ```json
 {
@@ -88,6 +100,8 @@ Full interactive documentation (OpenAPI/Swagger UI) is served at **`/docs`** onc
 ---
 
 ### `GET /users/profile/:id` — Get user profile (requires JWT)
+
+![Get user profile sequence diagram](docs/img/sequence-get-profile.svg)
 
 **Header:**
 ```
@@ -173,6 +187,8 @@ npm run dev
 
 ## Database Schema
 
+![Entity-relationship diagram](docs/img/er-diagram.svg)
+
 ```sql
 CREATE TABLE IF NOT EXISTS users (
   id       UUID PRIMARY KEY,
@@ -196,6 +212,7 @@ CREATE TABLE IF NOT EXISTS users (
 | `npm run test:integration` | Run integration tests against real PostgreSQL + Redis |
 | `npm run test:e2e` | Run end-to-end tests (real HTTP requests, real infra) |
 | `npm run test:all` | Run unit + integration + e2e tests |
+| `npm run test:collection` | Run the Postman collection with Newman against a running instance (`COLLECTION_BASE_URL`, default `http://localhost:3000`) |
 | `npm run coverage` | Run unit tests with a coverage report |
 | `npm run coverage:all` | Run all test tiers with a coverage report |
 | `npm run lint` | Run ESLint |
@@ -207,23 +224,27 @@ CREATE TABLE IF NOT EXISTS users (
 
 ## Running Tests
 
-The suite is split into three tiers under `__tests__/`:
+The suite has four tiers, each covering the happy path and the sad paths (validation, auth, ownership, and not-found errors) for every endpoint:
 
-- **`unit/`** — mocks every external dependency (PostgreSQL, Redis, bcrypt, JWT); no infrastructure required.
-- **`integration/`** — exercises repositories and services against a real PostgreSQL and Redis instance.
-- **`e2e/`** — exercises the real Express app end-to-end via Supertest, with no mocks, against real infrastructure. Covers the happy path and the sad paths for every endpoint, including the ownership check on `GET /users/profile/:id`.
+- **`__tests__/unit/`** — mocks every external dependency (PostgreSQL, Redis, bcrypt, JWT); no infrastructure required.
+- **`__tests__/integration/`** — exercises repositories and services against a real PostgreSQL and Redis instance.
+- **`__tests__/e2e/`** — exercises the real Express app end-to-end via Supertest, with no mocks, against real infrastructure. Covers the happy path and the sad paths for every endpoint, including the ownership check on `GET /users/profile/:id`.
+- **`Node Redis API.postman_collection.json`** — black-box HTTP tests via [Newman](https://github.com/postmanlabs/newman), run against a live instance of the built app (Docker or `npm start`). Covers the same happy/sad matrix as the e2e suite, except the 404 "session expired" case, which requires directly clearing the Redis cache and is only reachable from the Jest e2e suite.
 
 ```bash
 npm test                    # unit only — no setup needed
 docker-compose up -d postgres redis
 npm run test:integration
 npm run test:e2e
-npm run coverage:all        # everything, with a coverage report
+npm run coverage:all        # unit + integration + e2e, with a coverage report
+
+docker-compose up -d        # or `npm run build && npm start` with Postgres/Redis reachable
+npm run test:collection     # Postman collection via Newman
 ```
 
 ```
-Test Suites: 16 passed
-Tests:       71 passed
+Test Suites: 17 passed
+Tests:       73 passed
 Coverage:    100% statements / branches / functions / lines
 ```
 
@@ -241,6 +262,7 @@ This project uses GitHub Actions for continuous integration. The pipeline runs o
 - Unit tests
 - Integration + e2e tests with coverage, against real PostgreSQL/Redis service containers
 - Build verification
+- Postman collection tests (Newman) against the built app, happy and sad paths
 
 **Services provisioned in CI:**
 - PostgreSQL 15
@@ -270,7 +292,8 @@ This project uses GitHub Actions for continuous integration. The pipeline runs o
 │   │   └── CacheRepository.ts
 │   ├── errors/AppError.ts            # Typed domain errors mapped to HTTP status codes
 │   ├── middleware/
-│   │   ├── auth.ts                   # JWT authentication middleware
+│   │   ├── auth.ts                   # createAuthMiddleware(tokenService) factory, DI'd from routes.ts
+│   │   ├── asyncHandler.ts           # Wraps async handlers, forwards rejections to next(error)
 │   │   └── errorHandler.ts           # Central AppError -> HTTP response mapping
 │   ├── docs/openapi.ts               # OpenAPI 3.0 spec served at /docs
 │   ├── types/user.ts                 # Shared User types
@@ -280,6 +303,11 @@ This project uses GitHub Actions for continuous integration. The pipeline runs o
 │   ├── integration/                  # Real PostgreSQL + Redis
 │   ├── e2e/                          # Real app, real infra, Supertest
 │   └── testSetup/                    # Jest globalSetup/globalTeardown + shared test DB helpers
+├── docs/
+│   ├── README.md                     # Index of the diagrams below
+│   ├── mmd/                          # Mermaid diagram source
+│   └── img/                          # Rendered SVGs (embedded in this README)
+├── Node Redis API.postman_collection.json  # Newman-run collection, happy + sad paths
 ├── database.sql                      # PostgreSQL schema (auto-run by Docker and by integration/e2e setup)
 ├── docker-compose.yml
 ├── Dockerfile                        # Multi-stage build, non-root runtime user

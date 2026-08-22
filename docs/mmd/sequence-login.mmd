@@ -1,0 +1,48 @@
+sequenceDiagram
+    actor Client
+    participant Controller as LoginUserController
+    participant Service as AuthService
+    participant Repo as UserRepository
+    participant DB as PostgreSQL
+    participant Token as TokenService
+    participant Cache as CacheRepository
+    participant Redis
+
+    Client->>Controller: POST /login {username, password}
+
+    alt missing username or password
+        Controller->>Service: login(input)
+        Service-->>Controller: throws ValidationError
+        Controller-->>Client: 400 Username and password are required.
+    else unknown username
+        Controller->>Service: login(input)
+        Service->>Repo: findByUsername(username)
+        Repo->>DB: SELECT ... WHERE username = $1
+        DB-->>Repo: no rows
+        Repo-->>Service: null
+        Service-->>Controller: throws UnauthorizedError
+        Controller-->>Client: 401 Invalid credentials.
+    else wrong password
+        Controller->>Service: login(input)
+        Service->>Repo: findByUsername(username)
+        Repo->>DB: SELECT ... WHERE username = $1
+        DB-->>Repo: user row
+        Repo-->>Service: user
+        Service->>Service: bcrypt.compare(password, user.password)
+        Service-->>Controller: throws UnauthorizedError
+        Controller-->>Client: 401 Invalid credentials.
+    else happy path
+        Controller->>Service: login(input)
+        Service->>Repo: findByUsername(username)
+        Repo->>DB: SELECT ... WHERE username = $1
+        DB-->>Repo: user row
+        Repo-->>Service: user
+        Service->>Service: bcrypt.compare(password, user.password) = true
+        Service->>Token: sign(user.id)
+        Token-->>Service: jwt
+        Service->>Cache: setUserProfile(user.id, publicUser, ttl=3600s)
+        Cache->>Redis: SET user-{id} EX 3600
+        Redis-->>Cache: OK
+        Service-->>Controller: { token, user }
+        Controller-->>Client: 200 { message, token, user }
+    end

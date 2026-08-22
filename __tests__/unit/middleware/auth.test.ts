@@ -1,21 +1,20 @@
-import { NextFunction, Request, Response } from 'express';
+import { NextFunction, Request, RequestHandler, Response } from 'express';
 import { UnauthorizedError } from '../../../src/errors/AppError';
-
-const verifyMock = jest.fn();
-
-jest.mock('../../../src/services/TokenService', () => ({
-  TokenService: jest.fn().mockImplementation(() => ({ verify: verifyMock })),
-}));
-
-import { authentication } from '../../../src/middleware/auth';
+import { createAuthMiddleware } from '../../../src/middleware/auth';
+import { TokenService } from '../../../src/services/TokenService';
 
 describe('authentication middleware', () => {
+  let tokenService: jest.Mocked<Pick<TokenService, 'verify'>>;
+  let authentication: RequestHandler;
   let request: Partial<Request>;
   let response: Partial<Response>;
   let next: NextFunction;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    tokenService = { verify: jest.fn() };
+    authentication = createAuthMiddleware(
+      tokenService as unknown as TokenService
+    );
     request = { headers: {} };
     response = {};
     next = jest.fn();
@@ -38,7 +37,7 @@ describe('authentication middleware', () => {
 
   it('propagates the error thrown by TokenService.verify', () => {
     request.headers = { authorization: 'Bearer bad-token' };
-    verifyMock.mockImplementation(() => {
+    tokenService.verify.mockImplementation(() => {
       throw new UnauthorizedError('Invalid token');
     });
 
@@ -49,7 +48,7 @@ describe('authentication middleware', () => {
 
   it('sets request.userId and calls next on a valid token', () => {
     request.headers = { authorization: 'Bearer good-token' };
-    verifyMock.mockReturnValue({ subject: 'user-1' });
+    tokenService.verify.mockReturnValue({ subject: 'user-1' });
 
     authentication(request as Request, response as Response, next);
 

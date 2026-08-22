@@ -1,0 +1,53 @@
+flowchart TD
+    Client([Client])
+
+    subgraph App["Node.js / Express app"]
+        Router["Express Router\n(composition root: routes.ts)"]
+        Auth["auth middleware\n(createAuthMiddleware)"]
+        ErrorHandler["errorHandler middleware"]
+
+        subgraph Controllers["Controllers (thin HTTP layer)"]
+            CreateUserController
+            LoginUserController
+            GetUserInfoController
+        end
+
+        subgraph Services["Services (business rules)"]
+            UserService
+            AuthService
+            TokenService
+        end
+
+        subgraph Repositories["Repositories (data access)"]
+            UserRepository
+            CacheRepository
+        end
+    end
+
+    Postgres[(PostgreSQL\nusers table)]
+    Redis[(Redis\nuser-*id* cache, 1h TTL)]
+
+    Client -->|"POST /users"| Router
+    Client -->|"POST /login"| Router
+    Client -->|"GET /users/profile/:id"| Router
+
+    Router --> CreateUserController
+    Router --> LoginUserController
+    Router -->|"authenticate"| Auth --> GetUserInfoController
+
+    CreateUserController --> UserService
+    LoginUserController --> AuthService
+    GetUserInfoController --> UserService
+
+    UserService --> UserRepository
+    UserService --> CacheRepository
+    AuthService --> UserRepository
+    AuthService --> CacheRepository
+    AuthService --> TokenService
+    Auth --> TokenService
+
+    UserRepository --> Postgres
+    CacheRepository --> Redis
+
+    Controllers -.->|"next(error)"| ErrorHandler
+    ErrorHandler -.->|"JSON error response"| Client

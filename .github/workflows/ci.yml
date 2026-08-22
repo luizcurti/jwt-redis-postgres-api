@@ -81,6 +81,27 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Start app for collection tests
+        run: |
+          NODE_ENV=production PORT=3000 node dist/server.js &
+          echo $! > app.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/ > /dev/null; then
+              echo "App is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "App did not start in time" >&2
+          exit 1
+
+      - name: Run Postman collection tests
+        run: npm run test:collection
+
+      - name: Stop app
+        if: always()
+        run: kill "$(cat app.pid)" 2>/dev/null || true
+
       - name: Upload coverage to Codecov (optional)
         uses: codecov/codecov-action@v3
         with:

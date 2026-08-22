@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { CreateUserController } from './controllers/CreateUserController';
 import { GetUserInfoController } from './controllers/GetUserInfoController';
 import { LoginUserController } from './controllers/LoginUserController';
-import { authentication } from './middleware/auth';
+import { createAuthMiddleware } from './middleware/auth';
 import { pool } from './postgres';
 import { redisClient } from './redisConfig';
 import { CacheRepository } from './repositories/CacheRepository';
@@ -25,6 +25,7 @@ const authService = new AuthService(
 const createUserController = new CreateUserController(userService);
 const loginUserController = new LoginUserController(authService);
 const getUserInfoController = new GetUserInfoController(userService);
+const authentication = createAuthMiddleware(tokenService);
 
 const router = Router();
 
