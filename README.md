@@ -132,8 +132,8 @@ Authorization: Bearer <token>
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/luizcurti/redis-nodis-pg.git
-cd redis-nodis-pg
+git clone https://github.com/luizcurti/node-jwt-redis-postgres-api.git
+cd node-jwt-redis-postgres-api
 ```
 
 ### 2. Configure environment variables
