@@ -50,6 +50,24 @@ describe('UserRepository', () => {
     });
   });
 
+  describe('existsByEmail', () => {
+    it('returns true when a row is found', async () => {
+      pool.query.mockResolvedValueOnce({ rows: [{ exists: true }] });
+
+      await expect(repository.existsByEmail('test@example.com')).resolves.toBe(
+        true
+      );
+    });
+
+    it('returns false when no row is found', async () => {
+      pool.query.mockResolvedValueOnce({ rows: [] });
+
+      await expect(
+        repository.existsByEmail('missing@example.com')
+      ).resolves.toBe(false);
+    });
+  });
+
   describe('create', () => {
     it('inserts the user with the given fields', async () => {
       pool.query.mockResolvedValueOnce({ rows: [] });

@@ -10,7 +10,7 @@ import { CacheRepository } from '../repositories/CacheRepository';
 import { UserRepository } from '../repositories/UserRepository';
 import { UserPublic } from '../types/user';
 
-const BCRYPT_SALT_ROUNDS = 8;
+const BCRYPT_SALT_ROUNDS = 12;
 
 export type CreateUserInput = {
   username?: string;
@@ -32,10 +32,16 @@ export class UserService {
       throw new ValidationError('Missing required fields.');
     }
 
-    const alreadyExists = await this.userRepository.existsByUsername(username);
+    const usernameTaken = await this.userRepository.existsByUsername(username);
 
-    if (alreadyExists) {
+    if (usernameTaken) {
       throw new ConflictError('Username already taken.');
+    }
+
+    const emailTaken = await this.userRepository.existsByEmail(email);
+
+    if (emailTaken) {
+      throw new ConflictError('Email already registered.');
     }
 
     const passwordHash = await hash(password, BCRYPT_SALT_ROUNDS);

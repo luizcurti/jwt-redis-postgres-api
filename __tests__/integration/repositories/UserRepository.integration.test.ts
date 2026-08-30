@@ -60,6 +60,24 @@ describe('UserRepository (integration)', () => {
     );
   });
 
+  it('reports existsByEmail correctly before and after creation', async () => {
+    await expect(
+      repository.existsByEmail('integration@example.com')
+    ).resolves.toBe(false);
+
+    await repository.create({
+      id: '55555555-5555-5555-5555-555555555555',
+      name: 'Test User',
+      username: 'emailcheckuser',
+      passwordHash: 'hashed-password',
+      email: 'integration@example.com',
+    });
+
+    await expect(
+      repository.existsByEmail('integration@example.com')
+    ).resolves.toBe(true);
+  });
+
   it('rejects a second user with a duplicate username (unique constraint)', async () => {
     await repository.create({
       id: '33333333-3333-3333-3333-333333333333',

@@ -30,6 +30,15 @@ export class UserRepository {
     return rows.length > 0;
   }
 
+  async existsByEmail(email: string): Promise<boolean> {
+    const { rows } = await this.pool.query(
+      `SELECT 1 FROM USERS WHERE EMAIL = $1 LIMIT 1`,
+      [email]
+    );
+
+    return rows.length > 0;
+  }
+
   async create(user: NewUser): Promise<void> {
     await this.pool.query(
       `INSERT INTO USERS (ID, NAME, USERNAME, PASSWORD, EMAIL) VALUES ($1, $2, $3, $4, $5)`,

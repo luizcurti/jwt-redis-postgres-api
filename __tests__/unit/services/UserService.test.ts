@@ -14,7 +14,10 @@ jest.mock('bcryptjs', () => ({
 
 describe('UserService', () => {
   let userRepository: jest.Mocked<
-    Pick<UserRepository, 'existsByUsername' | 'create' | 'findByUsername'>
+    Pick<
+      UserRepository,
+      'existsByUsername' | 'existsByEmail' | 'create' | 'findByUsername'
+    >
   >;
   let cacheRepository: jest.Mocked<
     Pick<CacheRepository, 'getUserProfile' | 'setUserProfile'>
@@ -24,6 +27,7 @@ describe('UserService', () => {
   beforeEach(() => {
     userRepository = {
       existsByUsername: jest.fn(),
+      existsByEmail: jest.fn(),
       create: jest.fn(),
       findByUsername: jest.fn(),
     };
@@ -58,11 +62,23 @@ describe('UserService', () => {
       await expect(service.createUser(validInput)).rejects.toThrow(
         ConflictError
       );
+      expect(userRepository.existsByEmail).not.toHaveBeenCalled();
+      expect(userRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictError when the email is already registered', async () => {
+      userRepository.existsByUsername.mockResolvedValueOnce(false);
+      userRepository.existsByEmail.mockResolvedValueOnce(true);
+
+      await expect(service.createUser(validInput)).rejects.toThrow(
+        ConflictError
+      );
       expect(userRepository.create).not.toHaveBeenCalled();
     });
 
     it('creates the user and returns the generated id', async () => {
       userRepository.existsByUsername.mockResolvedValueOnce(false);
+      userRepository.existsByEmail.mockResolvedValueOnce(false);
 
       const result = await service.createUser(validInput);
 

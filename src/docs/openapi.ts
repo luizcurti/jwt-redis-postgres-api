@@ -75,7 +75,7 @@ export const openapiSpec = {
             content: { 'application/json': { schema: errorSchema } },
           },
           '409': {
-            description: 'Username already taken',
+            description: 'Username already taken, or email already registered',
             content: { 'application/json': { schema: errorSchema } },
           },
         },
@@ -109,6 +109,10 @@ export const openapiSpec = {
           },
           '401': {
             description: 'Invalid credentials',
+            content: { 'application/json': { schema: errorSchema } },
+          },
+          '429': {
+            description: 'Too many login attempts (rate limited)',
             content: { 'application/json': { schema: errorSchema } },
           },
         },

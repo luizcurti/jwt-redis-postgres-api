@@ -1,6 +1,6 @@
 # Node.js + Redis + PostgreSQL REST API
 
-A REST API built with Node.js, Express, PostgreSQL, and Redis that handles user registration, authentication with JWT, and Redis-based profile caching. Built with a layered architecture (controllers → services → repositories), constructor-based dependency injection from a single composition root, centralized error handling, and full unit/integration/e2e/collection test coverage.
+No ORM — just parameterized SQL via `pg` — paired with a Redis read-through cache: `GET /users/profile/:id` is served straight from Redis with an ownership check, never touching Postgres on a cache hit. A layered Express/TypeScript REST API with constructor-based DI from a single composition root, JWT auth, and full unit/integration/e2e/collection test coverage.
 
 ---
 
@@ -13,12 +13,18 @@ A REST API built with Node.js, Express, PostgreSQL, and Redis that handles user 
 | Database | PostgreSQL 15 (persistent storage) |
 | Cache | Redis 7 (session cache via ioredis 6) |
 | Auth | JWT (jsonwebtoken) |
-| Passwords | bcryptjs 3 |
+| Passwords | bcryptjs 3 (12 salt rounds) |
+| Security headers | Helmet (CSP disabled — see note below) |
+| Rate limiting | express-rate-limit on `POST /login` (10 requests / 15 min per IP) |
 | API docs | OpenAPI 3.0 via swagger-ui-express |
 | Testing | Jest 30 + ts-jest + Supertest (unit, integration, e2e) + Newman (Postman collection) |
 | Containers | Docker (multi-stage) + Docker Compose |
 
 > **Dependency note:** TypeScript is pinned to the `5.x` line on purpose. TypeScript 7 (the new Go-based native compiler) and TypeScript 6 are both out — but `@typescript-eslint` doesn't support them yet, and TS 6.0.3 has a regression where `@types/jest` globals (`describe`, `it`, `expect`, ...) stop resolving via `typeRoots`. `5.9.3` is the newest version compatible with the rest of the toolchain. Revisit this pin once `@typescript-eslint` catches up.
+
+> **Security notes:**
+> - Helmet is applied globally but `contentSecurityPolicy` is disabled: `swagger-ui-express` injects an inline, non-nonced `<script>` to configure the UI at `/docs`, which the default CSP would block. All other Helmet headers (HSTS, `X-Content-Type-Options`, `X-Frame-Options`, etc.) stay on.
+> - `POST /login` is rate-limited to 10 requests per 15 minutes per IP (`src/middleware/rateLimiter.ts`) to slow down credential-stuffing/brute-force attempts; it returns `429 { "error": "Too many login attempts. Please try again later." }` once exceeded. The limiter is skipped when `NODE_ENV=test` so it doesn't interfere with the test suites.
 
 ---
 
@@ -71,7 +77,7 @@ Full interactive documentation (OpenAPI/Swagger UI) is served at **`/docs`** onc
 |---|---|
 | `201 Created` | `{ "message": "User created successfully", "userId": "<uuid>" }` |
 | `400 Bad Request` | `{ "error": "Missing required fields." }` |
-| `409 Conflict` | `{ "error": "Username already taken." }` |
+| `409 Conflict` | `{ "error": "Username already taken." }` or `{ "error": "Email already registered." }` |
 | `500 Internal Server Error` | `{ "error": "Internal server error." }` |
 
 ---
@@ -95,6 +101,7 @@ Full interactive documentation (OpenAPI/Swagger UI) is served at **`/docs`** onc
 | `200 OK` | `{ "message": "Login successful", "token": "<jwt>", "user": { "id", "name", "username", "email" } }` |
 | `400 Bad Request` | `{ "error": "Username and password are required." }` |
 | `401 Unauthorized` | `{ "error": "Invalid credentials." }` |
+| `429 Too Many Requests` | `{ "error": "Too many login attempts. Please try again later." }` *(rate-limited: >10 requests/15 min per IP)* |
 | `500 Internal Server Error` | `{ "error": "Internal server error." }` |
 
 ---
@@ -215,6 +222,7 @@ CREATE TABLE IF NOT EXISTS users (
 | `npm run test:collection` | Run the Postman collection with Newman against a running instance (`COLLECTION_BASE_URL`, default `http://localhost:3000`) |
 | `npm run coverage` | Run unit tests with a coverage report |
 | `npm run coverage:all` | Run all test tiers with a coverage report |
+| `npm run audit` | Check production dependencies for known high/critical vulnerabilities |
 | `npm run lint` | Run ESLint |
 | `npm run lint:fix` | Run ESLint with automatic fixes |
 | `npm run format` | Format code with Prettier |
@@ -254,19 +262,23 @@ Coverage:    100% statements / branches / functions / lines
 
 ## CI/CD Pipeline
 
-This project uses GitHub Actions for continuous integration. The pipeline runs on every push and pull request to `main` and includes:
+This project uses GitHub Actions for continuous integration. The pipeline runs on every push and pull request to `main` as two jobs:
 
+**`lint-and-test`** (PostgreSQL 15 + Redis Alpine service containers):
+- Production dependency audit (`npm run audit`)
 - ESLint code quality check
 - Prettier format validation
 - TypeScript type checking
 - Unit tests
 - Integration + e2e tests with coverage, against real PostgreSQL/Redis service containers
 - Build verification
-- Postman collection tests (Newman) against the built app, happy and sad paths
 
-**Services provisioned in CI:**
-- PostgreSQL 15
-- Redis Alpine
+**`docker-validation`** (runs after `lint-and-test` passes):
+- Builds the production Docker image and starts the full stack (`docker compose up --build`)
+- Waits for the containerized app to become healthy
+- Runs the Postman collection (Newman) against the containerized app, happy and sad paths
+
+The pipeline fails if any of these steps fail.
 
 ---
 

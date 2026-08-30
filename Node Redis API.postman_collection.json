@@ -148,6 +148,34 @@
 			"response": []
 		},
 		{
+			"name": "Create User - duplicate email (sad path)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('status is 409', () => pm.response.to.have.status(409));",
+							"pm.test('reports email already registered', () => {",
+							"    pm.expect(pm.response.json()).to.eql({ error: 'Email already registered.' });",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"name\": \"Another User\",\n    \"username\": \"another_{{username}}\",\n    \"email\": \"{{username}}@example.com\",\n    \"password\": \"newpassword\"\n}",
+					"options": { "raw": { "language": "json" } }
+				},
+				"url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] }
+			},
+			"response": []
+		},
+		{
 			"name": "Login - missing fields (sad path)",
 			"event": [
 				{

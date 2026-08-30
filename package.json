@@ -1,6 +1,7 @@
 {
   "name": "node-jwt-redis-postgres-api",
   "version": "2.0.0",
+  "private": true,
   "main": "dist/server.js",
   "license": "MIT",
   "engines": {
@@ -17,6 +18,7 @@
     "test:collection": "newman run \"Node Redis API.postman_collection.json\" --env-var baseUrl=${COLLECTION_BASE_URL:-http://localhost:3000}",
     "coverage": "jest --coverage --selectProjects unit",
     "coverage:all": "jest --coverage --runInBand",
+    "audit": "npm audit --omit=dev --audit-level=high",
     "lint": "eslint . --ext .ts,.js",
     "lint:fix": "eslint . --ext .ts,.js --fix",
     "format": "prettier --write \"src/**/*.ts\" \"__tests__/**/*.ts\"",
@@ -26,6 +28,8 @@
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.0",
@@ -52,5 +56,15 @@
     "ts-jest": "^29.4.12",
     "tsx": "^4.23.12",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "flatted": "^3.4.4",
+    "handlebars": "^4.7.9",
+    "jose": "^4.15.9",
+    "lodash": "^4.18.1",
+    "node-forge": "^1.4.0",
+    "qs": "^6.16.0",
+    "underscore": "^1.13.8",
+    "uuid": "^11.1.1"
   }
 }

@@ -43,6 +43,22 @@ describe('App (e2e)', () => {
       expect(res.statusCode).toBe(200);
       expect(res.body).toEqual({ message: 'Server is running!' });
     });
+
+    it('sets security headers via helmet', async () => {
+      const res = await request(app).get('/');
+
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.headers['x-powered-by']).toBeUndefined();
+    });
+  });
+
+  describe('GET /docs', () => {
+    it('serves the Swagger UI page', async () => {
+      const res = await request(app).get('/docs/');
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toContain('text/html');
+    });
   });
 
   describe('POST /users', () => {
@@ -80,6 +96,20 @@ describe('App (e2e)', () => {
 
       expect(res.statusCode).toBe(409);
       expect(res.body).toEqual({ error: 'Username already taken.' });
+    });
+
+    it('returns 409 when the email already exists', async () => {
+      await createAndLoginUser('emailowner');
+
+      const res = await request(app).post('/users').send({
+        username: 'someotherusername',
+        name: 'Another User',
+        password: 'password123',
+        email: 'emailowner@example.com',
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.body).toEqual({ error: 'Email already registered.' });
     });
   });
 

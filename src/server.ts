@@ -1,11 +1,15 @@
 import 'dotenv/config';
 import express from 'express';
+import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import { openapiSpec } from './docs/openapi';
 import { errorHandler } from './middleware/errorHandler';
 import router from './routes';
 
 const app = express();
+// CSP is disabled because swagger-ui-express injects an inline, non-nonced
+// <script> to configure the UI, which the default policy would block.
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json());
 
 app.get('/', (req, res) => {
