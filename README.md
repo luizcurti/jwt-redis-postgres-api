@@ -8,7 +8,7 @@ No ORM — just parameterized SQL via `pg` — paired with a Redis read-through 
 
 | Layer | Technology |
 |---|---|
-| Runtime | Node.js 20 + TypeScript 5.9 (strict mode) |
+| Runtime | Node.js 24 + TypeScript 5.9 (strict mode) |
 | Framework | Express 5 |
 | Database | PostgreSQL 15 (persistent storage) |
 | Cache | Redis 7 (session cache via ioredis 6) |
@@ -134,7 +134,7 @@ Authorization: Bearer <token>
 ### Prerequisites
 
 - [Docker](https://www.docker.com/) and Docker Compose
-- Node.js 20+ (for local development without Docker)
+- Node.js 24+ (for local development without Docker)
 
 ### 1. Clone the repository
 
